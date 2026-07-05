@@ -120,7 +120,19 @@ Then open http://localhost:5173.
 
 ## Deployment
 
-Not deployed yet — structured to be deploy-ready: backend as a standard FastAPI/Uvicorn app
-(Railway/Render), frontend as a static Vite build (Vercel). CORS origins are read from the
-`CORS_ORIGINS` env var on the backend so the production frontend URL can be added without a
-code change.
+Not deployed yet, but deploy-ready:
+
+**Backend (Railway or Render)**
+- `backend/Procfile` + `backend/runtime.txt` — Railway (Nixpacks) picks these up automatically.
+- `render.yaml` (repo root) — a Render Blueprint; import the repo and Render provisions the
+  service from this file. Either way, set `GROQ_API_KEY`, `TAVILY_API_KEY`, and `CORS_ORIGINS`
+  (the deployed frontend's URL) as environment variables on the host — they're intentionally
+  not baked into any file.
+
+**Frontend (Vercel)**
+- Zero-config for Vite; just import the repo with root directory `frontend/`.
+- Set `VITE_API_BASE_URL` in the Vercel project's environment variables to the deployed
+  backend's URL.
+
+After both are deployed, update the backend's `CORS_ORIGINS` to the Vercel URL (and redeploy)
+so the browser isn't blocked by CORS.

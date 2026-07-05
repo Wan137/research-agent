@@ -1,0 +1,21 @@
+# Render blueprint for the backend. Import this repo on Render and it will
+# pick up this file automatically ("New +" -> "Blueprint"). Frontend deploys
+# separately on Vercel (zero-config for Vite, no blueprint needed there).
+services:
+  - type: web
+    name: research-agent-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: CORS_ORIGINS
+        sync: false
+      - key: MAX_CRITIQUE_RETRIES
+        value: "2"
