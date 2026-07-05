@@ -127,9 +127,14 @@ async def research(payload: ResearchRequest):
 
 
 @app.get("/api/health")
-async def health():
-    # pid included temporarily to diagnose whether the deployed process is
-    # single- or multi-worker (in-memory rate limiting only works per-worker).
+async def health(request: Request):
+    # pid + client_host included temporarily to diagnose why per-IP rate
+    # limiting isn't triggering in production despite working locally.
     import os
 
-    return {"status": "ok", "pid": os.getpid()}
+    return {
+        "status": "ok",
+        "pid": os.getpid(),
+        "client_host": request.client.host if request.client else None,
+        "x_forwarded_for": request.headers.get("x-forwarded-for"),
+    }
