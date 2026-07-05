@@ -128,4 +128,8 @@ async def research(payload: ResearchRequest):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    # pid included temporarily to diagnose whether the deployed process is
+    # single- or multi-worker (in-memory rate limiting only works per-worker).
+    import os
+
+    return {"status": "ok", "pid": os.getpid()}
