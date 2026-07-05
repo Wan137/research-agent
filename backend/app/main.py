@@ -56,8 +56,20 @@ _RATE_LIMIT_WINDOW_SECONDS = 60
 _request_log: dict[str, list[float]] = defaultdict(list)
 
 
+def _client_ip(request: Request) -> str:
+    # Behind Railway's (or any) reverse proxy, request.client.host is the
+    # proxy's own internal address - it varies per-request across a pool of
+    # internal IPs and is useless as a rate-limit key. X-Forwarded-For's
+    # first entry is the real originating client, appended once by the
+    # proxy closest to the client and left alone by hops after that.
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 def rate_limit(request: Request) -> None:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_ip(request)
     now = time.monotonic()
     window_start = now - _RATE_LIMIT_WINDOW_SECONDS
 
@@ -127,14 +139,5 @@ async def research(payload: ResearchRequest):
 
 
 @app.get("/api/health")
-async def health(request: Request):
-    # pid + client_host included temporarily to diagnose why per-IP rate
-    # limiting isn't triggering in production despite working locally.
-    import os
-
-    return {
-        "status": "ok",
-        "pid": os.getpid(),
-        "client_host": request.client.host if request.client else None,
-        "x_forwarded_for": request.headers.get("x-forwarded-for"),
-    }
+async def health():
+    return {"status": "ok"}
