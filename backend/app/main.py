@@ -57,7 +57,12 @@ async def _stream_research(question: str):
     try:
         async for update in research_agent_graph.astream(initial_state, stream_mode="updates"):
             for node_name, partial in update.items():
-                accumulated_sources.extend(partial.get("sources", []))
+                for source in partial.get("sources", []):
+                    # The same tool (e.g. vector_search) can be picked for more than
+                    # one plan step and return the same source each time; keep only
+                    # the first occurrence so the frontend doesn't show duplicates.
+                    if source not in accumulated_sources:
+                        accumulated_sources.append(source)
 
                 for trace_event in partial.get("trace", []):
                     yield _sse("trace", trace_event)
