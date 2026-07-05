@@ -16,8 +16,10 @@ supports GET, so the frontend consumes this with fetch + a ReadableStream
 reader instead.
 """
 import json
+import time
+from collections import defaultdict
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -40,6 +42,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Each research run makes several LLM calls (plus possibly web_search/
+# vector_search), so this is the one endpoint worth protecting from casual
+# abuse burning through the Groq/Tavily free-tier quota. A small hand-rolled
+# per-IP sliding-window counter, rather than a rate-limiting library: the app
+# runs as a single instance, so in-memory state is sufficient, and it avoids
+# depending on a third-party package to stay compatible with whatever
+# FastAPI/Starlette version is installed. A multi-instance deployment would
+# need a shared store (e.g. Redis) instead of this in-memory dict.
+_RATE_LIMIT_MAX_REQUESTS = 10
+_RATE_LIMIT_WINDOW_SECONDS = 60
+_request_log: dict[str, list[float]] = defaultdict(list)
+
+
+def rate_limit(request: Request) -> None:
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    window_start = now - _RATE_LIMIT_WINDOW_SECONDS
+
+    timestamps = _request_log[client_ip]
+    while timestamps and timestamps[0] < window_start:
+        timestamps.pop(0)
+
+    if len(timestamps) >= _RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Rate limit exceeded: max {_RATE_LIMIT_MAX_REQUESTS} requests per "
+                f"{_RATE_LIMIT_WINDOW_SECONDS} seconds. Please wait and try again."
+            ),
+        )
+    timestamps.append(now)
 
 
 class ResearchRequest(BaseModel):
@@ -80,10 +114,10 @@ async def _stream_research(question: str):
         yield _sse("error", {"message": str(exc)})
 
 
-@app.post("/api/research")
-async def research(request: ResearchRequest):
+@app.post("/api/research", dependencies=[Depends(rate_limit)])
+async def research(payload: ResearchRequest):
     return StreamingResponse(
-        _stream_research(request.question),
+        _stream_research(payload.question),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
